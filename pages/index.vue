@@ -38,7 +38,7 @@ const navigateTo = (link: string) => {
     <!-- Hero Section -->
     <section class="hero">
       <div class="hero-content">
-        <h1 class="hero-title">RentLICA</h1>
+        <img src="/logo.png" alt="RentLICA" class="hero-logo" />
         <p class="hero-subtitle">대한민국 임대사업자를 위한<br />법규 및 세무 정보 서비스</p>
         <div class="hero-tags">
           <Tag value="주택임대" severity="info" />
@@ -125,11 +125,9 @@ const navigateTo = (link: string) => {
   margin: 0 -1rem 2rem;
 }
 
-.hero-title {
-  font-size: 2.5rem;
-  font-weight: 700;
-  color: var(--p-primary-color);
-  margin-bottom: 0.5rem;
+.hero-logo {
+  height: 48px;
+  margin-bottom: 0.75rem;
 }
 
 .hero-subtitle {
@@ -240,8 +238,8 @@ const navigateTo = (link: string) => {
 
 /* Mobile */
 @media (max-width: 640px) {
-  .hero-title {
-    font-size: 2rem;
+  .hero-logo {
+    height: 40px;
   }
 
   .hero-subtitle {
