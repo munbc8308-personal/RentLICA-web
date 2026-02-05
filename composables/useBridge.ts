@@ -1,4 +1,5 @@
 import type { BridgeMessageType, BridgeResponse, DeviceInfo, LocationInfo } from '~/types/bridge'
+import { bridgeLogger } from './useBridgeLogger'
 
 // 앱에서 주입하는 함수 타입 선언
 declare global {
@@ -59,6 +60,7 @@ export function useBridge(): UseBridgeReturn {
   ): Promise<BridgeResponse<T>> => {
     return new Promise((resolve) => {
       if (!isInApp.value || !window.sendToApp) {
+        bridgeLogger.log('bridge', 'error', 'Not in app environment', { isInApp: isInApp.value, sendToApp: !!window.sendToApp })
         resolve({ success: false, error: 'Not in app environment' })
         return
       }
@@ -67,6 +69,7 @@ export function useBridge(): UseBridgeReturn {
 
       // 타임아웃 설정 (5초)
       const timeout = setTimeout(() => {
+        bridgeLogger.log('bridge', 'error', `Request timeout: ${type}`, { requestId })
         pendingRequests.delete(requestId)
         resolve({ success: false, error: 'Request timeout' })
       }, 5000)
@@ -75,10 +78,11 @@ export function useBridge(): UseBridgeReturn {
       pendingRequests.set(requestId, (response) => {
         clearTimeout(timeout)
         pendingRequests.delete(requestId)
+        bridgeLogger.log('bridge', 'receive', `Response for ${type}`, response)
         resolve(response as BridgeResponse<T>)
       })
 
-      console.log('[Bridge] Sending message:', { type, payload, requestId })
+      bridgeLogger.log('bridge', 'send', `Sending: ${type}`, { payload, requestId })
 
       // 앱으로 메시지 전송 (sendToApp 사용, requestId 전달)
       window.sendToApp(type, payload || {}, requestId)
@@ -87,13 +91,13 @@ export function useBridge(): UseBridgeReturn {
 
   // 앱 인증 API
   const getAppSignature = async (): Promise<string | null> => {
-    const response = await sendMessage<{ signature: string }>('app.getSignature')
-    return response.success ? response.data?.signature ?? null : null
+    const response = await sendMessage<string>('app.getSignature')
+    return response.success ? response.data ?? null : null
   }
 
   const getSessionToken = async (): Promise<string | null> => {
-    const response = await sendMessage<{ token: string }>('app.getSessionToken')
-    return response.success ? response.data?.token ?? null : null
+    const response = await sendMessage<string>('app.getSessionToken')
+    return response.success ? response.data ?? null : null
   }
 
   // 사용자 인증 API
@@ -108,8 +112,8 @@ export function useBridge(): UseBridgeReturn {
   }
 
   const getAuthToken = async (): Promise<string | null> => {
-    const response = await sendMessage<{ token: string }>('auth.getToken')
-    return response.success ? response.data?.token ?? null : null
+    const response = await sendMessage<string>('auth.getToken')
+    return response.success ? response.data ?? null : null
   }
 
   // 디바이스 API
@@ -119,8 +123,8 @@ export function useBridge(): UseBridgeReturn {
   }
 
   const getPushToken = async (): Promise<string | null> => {
-    const response = await sendMessage<{ token: string }>('device.getPushToken')
-    return response.success ? response.data?.token ?? null : null
+    const response = await sendMessage<string>('device.getPushToken')
+    return response.success ? response.data ?? null : null
   }
 
   const getLocation = async (): Promise<LocationInfo | null> => {
@@ -135,8 +139,8 @@ export function useBridge(): UseBridgeReturn {
   }
 
   const getStorage = async (key: string): Promise<string | null> => {
-    const response = await sendMessage<{ value: string }>('storage.get', { key })
-    return response.success ? response.data?.value ?? null : null
+    const response = await sendMessage<string>('storage.get', { key })
+    return response.success ? response.data ?? null : null
   }
 
   const removeStorage = async (key: string): Promise<boolean> => {
@@ -162,24 +166,27 @@ export function useBridge(): UseBridgeReturn {
   // 이벤트 리스너 설정
   onMounted(() => {
     isInApp.value = checkIsInApp()
+    bridgeLogger.log('bridge', 'info', `Bridge mounted, isInApp: ${isInApp.value}`)
 
     // 앱 준비 완료 이벤트
     const handleAppReady = () => {
-      console.log('[Bridge] App ready event received')
+      bridgeLogger.log('bridge', 'info', 'App ready event received')
       isAppReady.value = true
       isInApp.value = true
     }
 
     // 앱에서 응답 수신
     const handleNativeMessage = (event: CustomEvent<BridgeResponse>) => {
-      console.log('[Bridge] Native message received:', event.detail)
+      bridgeLogger.log('bridge', 'receive', 'Native message event', event.detail)
       const { requestId } = event.detail
       if (requestId && pendingRequests.has(requestId)) {
+        bridgeLogger.log('bridge', 'info', `Found pending request: ${requestId}`)
         const handler = pendingRequests.get(requestId)
         handler?.(event.detail)
       } else {
-        console.log('[Bridge] No pending request for requestId:', requestId)
-        console.log('[Bridge] Pending requests:', Array.from(pendingRequests.keys()))
+        bridgeLogger.log('bridge', 'debug', `No pending request for: ${requestId}`, {
+          pending: Array.from(pendingRequests.keys())
+        })
       }
     }
 
@@ -187,15 +194,11 @@ export function useBridge(): UseBridgeReturn {
     window.addEventListener('nativeMessage', handleNativeMessage as EventListener)
 
     // 이미 앱이 준비된 경우
-    if (window.isNativeApp) {
-      console.log('[Bridge] App already ready')
+    if ((window as any).isNativeApp) {
+      bridgeLogger.log('bridge', 'info', 'App already ready on mount')
       isAppReady.value = true
       isInApp.value = true
     }
-
-    // ReactNativeWebView 존재 여부 로그
-    console.log('[Bridge] ReactNativeWebView available:', !!window.ReactNativeWebView)
-    console.log('[Bridge] isInApp:', isInApp.value)
 
     onUnmounted(() => {
       window.removeEventListener('nativeAppReady', handleAppReady)

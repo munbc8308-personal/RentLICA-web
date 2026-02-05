@@ -1,248 +1,242 @@
 <script setup lang="ts">
+import { useBridgeLogger } from '~/composables/useBridgeLogger'
+
 useHead({
-  title: 'Bridge API 테스트 - RentLICA'
+  title: 'Bridge API Test - RentLICA'
 })
 
 const bridge = useBridge()
+const { logs, clearLogs } = useBridgeLogger()
 
-// 상태
-const logs = ref<Array<{ time: string; type: 'send' | 'receive' | 'info' | 'error'; message: string }>>([])
+// UI 상태
 const deviceInfo = ref<Record<string, unknown> | null>(null)
 const sessionToken = ref<string | null>(null)
 const appSignature = ref<string | null>(null)
-
-// 로그 추가
-const addLog = (type: 'send' | 'receive' | 'info' | 'error', message: string) => {
-  const time = new Date().toLocaleTimeString('ko-KR')
-  logs.value.unshift({ time, type, message })
-  if (logs.value.length > 50) logs.value.pop()
-}
+const isLogExpanded = ref(true)
 
 // 테스트 함수들
 const testGetDeviceInfo = async () => {
-  addLog('send', 'device.getInfo 요청')
   const info = await bridge.getDeviceInfo()
   if (info) {
     deviceInfo.value = info
-    addLog('receive', `디바이스 정보: ${JSON.stringify(info)}`)
-  } else {
-    addLog('error', '디바이스 정보 조회 실패')
   }
 }
 
 const testGetAppSignature = async () => {
-  addLog('send', 'app.getSignature 요청')
   const signature = await bridge.getAppSignature()
   if (signature) {
     appSignature.value = signature
-    addLog('receive', `앱 서명: ${signature}`)
-  } else {
-    addLog('error', '앱 서명 조회 실패')
   }
 }
 
 const testGetSessionToken = async () => {
-  addLog('send', 'app.getSessionToken 요청')
   const token = await bridge.getSessionToken()
   if (token) {
     sessionToken.value = token
-    addLog('receive', `세션 토큰: ${token.substring(0, 20)}...`)
-  } else {
-    addLog('error', '세션 토큰 조회 실패')
   }
 }
 
 const testGetPushToken = async () => {
-  addLog('send', 'device.getPushToken 요청')
-  const token = await bridge.getPushToken()
-  if (token) {
-    addLog('receive', `푸시 토큰: ${token.substring(0, 30)}...`)
-  } else {
-    addLog('error', '푸시 토큰 조회 실패 (Firebase 미설정일 수 있음)')
-  }
+  await bridge.getPushToken()
 }
 
 const testGetLocation = async () => {
-  addLog('send', 'device.getLocation 요청')
-  const location = await bridge.getLocation()
-  if (location) {
-    addLog('receive', `위치: 위도 ${location.latitude}, 경도 ${location.longitude}`)
-  } else {
-    addLog('error', '위치 조회 실패')
-  }
+  await bridge.getLocation()
 }
 
 const testHaptic = async () => {
-  addLog('send', 'ui.haptic 요청 (medium)')
   await bridge.haptic('medium')
-  addLog('info', '햅틱 피드백 전송됨')
 }
 
 const testStorage = async () => {
   const testKey = 'rentlica_test'
   const testValue = `test_${Date.now()}`
 
-  addLog('send', `storage.set 요청: ${testKey} = ${testValue}`)
-  const setResult = await bridge.setStorage(testKey, testValue)
-
-  if (setResult) {
-    addLog('receive', '저장 성공')
-
-    addLog('send', `storage.get 요청: ${testKey}`)
-    const getValue = await bridge.getStorage(testKey)
-    addLog('receive', `조회 결과: ${getValue}`)
-
-    addLog('send', `storage.remove 요청: ${testKey}`)
-    const removeResult = await bridge.removeStorage(testKey)
-    addLog('receive', removeResult ? '삭제 성공' : '삭제 실패')
-  } else {
-    addLog('error', '저장 실패')
-  }
+  await bridge.setStorage(testKey, testValue)
+  await bridge.getStorage(testKey)
+  await bridge.removeStorage(testKey)
 }
 
 const testShare = async () => {
-  addLog('send', 'ui.share 요청')
-  const result = await bridge.share('RentLICA 테스트', 'https://rentlica.com')
-  addLog(result ? 'receive' : 'error', result ? '공유 완료' : '공유 실패')
+  await bridge.share('RentLICA Test', 'https://rentlica.com')
 }
 
-const clearLogs = () => {
-  logs.value = []
+// 테스트 이벤트 발생 (웹에서 직접)
+const testLocalEvent = () => {
+  const testRequestId = Date.now().toString()
+  ;(window as any).testBridgeEvent?.(testRequestId)
 }
 
-// 초기화 로그
-onMounted(() => {
-  addLog('info', `앱 환경: ${bridge.isInApp.value ? 'Yes' : 'No (브라우저)'}`)
-  addLog('info', `User-Agent: ${navigator.userAgent}`)
-
-  // 앱 준비 완료 감지
-  watch(() => bridge.isAppReady.value, (ready) => {
-    if (ready) {
-      addLog('info', '앱 준비 완료 (nativeAppReady)')
-    }
-  })
-})
-
-const getLogClass = (type: string) => {
+const getLogLevelClass = (level: string) => {
   return {
-    'log-send': type === 'send',
-    'log-receive': type === 'receive',
-    'log-info': type === 'info',
-    'log-error': type === 'error'
+    'log-send': level === 'send',
+    'log-receive': level === 'receive',
+    'log-info': level === 'info',
+    'log-error': level === 'error',
+    'log-debug': level === 'debug'
   }
+}
+
+const getSourceBadge = (source: string) => {
+  const badges: Record<string, string> = {
+    plugin: 'P',
+    bridge: 'B',
+    app: 'A',
+    web: 'W'
+  }
+  return badges[source] || '?'
 }
 </script>
 
 <template>
-  <div class="container">
-    <header class="header">
-      <h1>Bridge API 테스트</h1>
-      <div class="status">
-        <Tag :severity="bridge.isInApp.value ? 'success' : 'warn'">
-          {{ bridge.isInApp.value ? '앱 환경' : '브라우저 환경' }}
-        </Tag>
-        <Tag :severity="bridge.isAppReady.value ? 'success' : 'secondary'">
-          {{ bridge.isAppReady.value ? '앱 준비됨' : '대기중' }}
-        </Tag>
+  <div class="page-container">
+    <!-- Main Content -->
+    <div class="main-content">
+      <header class="header">
+        <h1>Bridge API Test</h1>
+        <div class="status">
+          <Tag :severity="bridge.isInApp.value ? 'success' : 'warn'">
+            {{ bridge.isInApp.value ? 'In App' : 'Browser' }}
+          </Tag>
+          <Tag :severity="bridge.isAppReady.value ? 'success' : 'secondary'">
+            {{ bridge.isAppReady.value ? 'Ready' : 'Waiting' }}
+          </Tag>
+        </div>
+      </header>
+
+      <div class="content">
+        <!-- App Auth -->
+        <Card class="test-section">
+          <template #title>App Auth</template>
+          <template #content>
+            <div class="button-group">
+              <Button label="App Signature" icon="pi pi-shield" size="small" @click="testGetAppSignature" />
+              <Button label="Session Token" icon="pi pi-key" size="small" @click="testGetSessionToken" />
+            </div>
+            <div v-if="appSignature" class="result">
+              <small>Signature: {{ appSignature }}</small>
+            </div>
+            <div v-if="sessionToken" class="result">
+              <small>Token: {{ sessionToken?.substring(0, 30) }}...</small>
+            </div>
+          </template>
+        </Card>
+
+        <!-- Device -->
+        <Card class="test-section">
+          <template #title>Device</template>
+          <template #content>
+            <div class="button-group">
+              <Button label="Device Info" icon="pi pi-mobile" size="small" @click="testGetDeviceInfo" />
+              <Button label="Push Token" icon="pi pi-bell" size="small" @click="testGetPushToken" />
+              <Button label="Location" icon="pi pi-map-marker" size="small" @click="testGetLocation" />
+            </div>
+            <div v-if="deviceInfo" class="result">
+              <pre>{{ JSON.stringify(deviceInfo, null, 2) }}</pre>
+            </div>
+          </template>
+        </Card>
+
+        <!-- UI / Storage -->
+        <Card class="test-section">
+          <template #title>UI / Storage</template>
+          <template #content>
+            <div class="button-group">
+              <Button label="Haptic" icon="pi pi-bolt" size="small" @click="testHaptic" />
+              <Button label="Storage" icon="pi pi-database" size="small" @click="testStorage" />
+              <Button label="Share" icon="pi pi-share-alt" size="small" @click="testShare" />
+            </div>
+          </template>
+        </Card>
+
+        <!-- Debug -->
+        <Card class="test-section">
+          <template #title>Debug</template>
+          <template #content>
+            <div class="button-group">
+              <Button
+                label="Test Local Event"
+                icon="pi pi-play"
+                size="small"
+                severity="secondary"
+                @click="testLocalEvent"
+              />
+            </div>
+            <p class="hint">
+              This fires a test nativeMessage event locally to verify the event listener works.
+            </p>
+          </template>
+        </Card>
+
+        <div class="footer-link">
+          <NuxtLink to="/">
+            <Button label="Home" icon="pi pi-home" severity="secondary" size="small" />
+          </NuxtLink>
+        </div>
       </div>
-    </header>
-
-    <div class="content">
-      <!-- 테스트 버튼 그룹 -->
-      <Card class="test-section">
-        <template #title>앱 인증</template>
-        <template #content>
-          <div class="button-group">
-            <Button label="앱 서명 조회" icon="pi pi-shield" @click="testGetAppSignature" />
-            <Button label="세션 토큰 조회" icon="pi pi-key" @click="testGetSessionToken" />
-          </div>
-          <div v-if="appSignature" class="result">
-            <small>앱 서명: {{ appSignature }}</small>
-          </div>
-          <div v-if="sessionToken" class="result">
-            <small>세션 토큰: {{ sessionToken.substring(0, 30) }}...</small>
-          </div>
-        </template>
-      </Card>
-
-      <Card class="test-section">
-        <template #title>디바이스</template>
-        <template #content>
-          <div class="button-group">
-            <Button label="디바이스 정보" icon="pi pi-mobile" @click="testGetDeviceInfo" />
-            <Button label="푸시 토큰" icon="pi pi-bell" @click="testGetPushToken" />
-            <Button label="위치 정보" icon="pi pi-map-marker" @click="testGetLocation" />
-          </div>
-          <div v-if="deviceInfo" class="result">
-            <small>{{ JSON.stringify(deviceInfo, null, 2) }}</small>
-          </div>
-        </template>
-      </Card>
-
-      <Card class="test-section">
-        <template #title>기타</template>
-        <template #content>
-          <div class="button-group">
-            <Button label="햅틱" icon="pi pi-bolt" @click="testHaptic" />
-            <Button label="스토리지 테스트" icon="pi pi-database" @click="testStorage" />
-            <Button label="공유하기" icon="pi pi-share-alt" @click="testShare" />
-          </div>
-        </template>
-      </Card>
-
-      <!-- 로그 출력 -->
-      <Card class="log-section">
-        <template #title>
-          <div class="log-header">
-            <span>로그</span>
-            <Button label="초기화" icon="pi pi-trash" size="small" severity="secondary" @click="clearLogs" />
-          </div>
-        </template>
-        <template #content>
-          <div class="log-container">
-            <div
-              v-for="(log, index) in logs"
-              :key="index"
-              class="log-item"
-              :class="getLogClass(log.type)"
-            >
-              <span class="log-time">{{ log.time }}</span>
-              <span class="log-type">[{{ log.type.toUpperCase() }}]</span>
-              <span class="log-message">{{ log.message }}</span>
-            </div>
-            <div v-if="logs.length === 0" class="log-empty">
-              로그가 없습니다. 위 버튼을 눌러 테스트해보세요.
-            </div>
-          </div>
-        </template>
-      </Card>
     </div>
 
-    <footer class="footer">
-      <NuxtLink to="/">
-        <Button label="홈으로" icon="pi pi-home" severity="secondary" />
-      </NuxtLink>
-    </footer>
+    <!-- Fixed Bottom Log Panel -->
+    <div class="log-panel" :class="{ 'collapsed': !isLogExpanded }">
+      <div class="log-header" @click="isLogExpanded = !isLogExpanded">
+        <div class="log-title">
+          <i :class="isLogExpanded ? 'pi pi-chevron-down' : 'pi pi-chevron-up'"></i>
+          <span>Bridge Logs ({{ logs.length }})</span>
+        </div>
+        <Button
+          v-if="isLogExpanded"
+          icon="pi pi-trash"
+          size="small"
+          severity="secondary"
+          text
+          @click.stop="clearLogs"
+        />
+      </div>
+
+      <div v-if="isLogExpanded" class="log-content">
+        <div
+          v-for="log in logs"
+          :key="log.id"
+          class="log-item"
+          :class="getLogLevelClass(log.level)"
+        >
+          <span class="log-time">{{ log.time }}</span>
+          <span class="log-source" :title="log.source">{{ getSourceBadge(log.source) }}</span>
+          <span class="log-level">[{{ log.level.toUpperCase() }}]</span>
+          <span class="log-message">{{ log.message }}</span>
+          <span v-if="log.data" class="log-data">{{ JSON.stringify(log.data) }}</span>
+        </div>
+        <div v-if="logs.length === 0" class="log-empty">
+          No logs yet. Click buttons above to test bridge APIs.
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.container {
-  max-width: 800px;
-  margin: 0 auto;
-  padding: 1rem;
-  min-height: 100vh;
+.page-container {
   display: flex;
   flex-direction: column;
+  min-height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+}
+
+.main-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+  padding-bottom: 1rem;
 }
 
 .header {
   text-align: center;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
 }
 
 .header h1 {
-  font-size: 1.5rem;
+  font-size: 1.25rem;
   margin-bottom: 0.5rem;
 }
 
@@ -253,14 +247,22 @@ const getLogClass = (type: string) => {
 }
 
 .content {
-  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.75rem;
+}
+
+.test-section :deep(.p-card-body) {
+  padding: 0.75rem;
+}
+
+.test-section :deep(.p-card-title) {
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
 }
 
 .test-section :deep(.p-card-content) {
-  padding-top: 0;
+  padding: 0;
 }
 
 .button-group {
@@ -270,61 +272,148 @@ const getLogClass = (type: string) => {
 }
 
 .result {
-  margin-top: 0.75rem;
+  margin-top: 0.5rem;
   padding: 0.5rem;
   background: var(--p-surface-100);
   border-radius: 4px;
   font-family: monospace;
+  font-size: 0.75rem;
   word-break: break-all;
+  overflow-x: auto;
 }
 
-.log-section {
-  flex: 1;
-  min-height: 200px;
+.result pre {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.hint {
+  font-size: 0.75rem;
+  color: var(--p-text-muted-color);
+  margin-top: 0.5rem;
+  margin-bottom: 0;
+}
+
+.footer-link {
+  margin-top: 0.5rem;
+  text-align: center;
+}
+
+/* Log Panel - Fixed at bottom */
+.log-panel {
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--p-surface-0);
+  border-top: 2px solid var(--p-primary-color);
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.15);
+  max-height: 40vh;
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+}
+
+.log-panel.collapsed {
+  max-height: auto;
 }
 
 .log-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  width: 100%;
+  padding: 0.5rem 1rem;
+  background: var(--p-primary-color);
+  color: white;
+  cursor: pointer;
+  user-select: none;
 }
 
-.log-container {
-  max-height: 300px;
-  overflow-y: auto;
-  font-family: monospace;
+.log-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
   font-size: 0.85rem;
 }
 
+.log-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem;
+  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  background: #1e1e1e;
+  color: #d4d4d4;
+}
+
 .log-item {
-  padding: 0.25rem 0;
-  border-bottom: 1px solid var(--p-surface-200);
+  padding: 0.25rem 0.5rem;
+  border-radius: 2px;
+  margin-bottom: 2px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.log-item:hover {
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .log-time {
-  color: var(--p-text-muted-color);
-  margin-right: 0.5rem;
+  color: #808080;
+  flex-shrink: 0;
 }
 
-.log-type {
+.log-source {
+  width: 1.2em;
+  height: 1.2em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+  font-size: 0.65rem;
   font-weight: bold;
-  margin-right: 0.5rem;
+  flex-shrink: 0;
+  background: #444;
+  color: #fff;
 }
 
-.log-send .log-type { color: var(--p-blue-500); }
-.log-receive .log-type { color: var(--p-green-500); }
-.log-info .log-type { color: var(--p-text-muted-color); }
-.log-error .log-type { color: var(--p-red-500); }
+.log-level {
+  font-weight: 600;
+  flex-shrink: 0;
+  min-width: 60px;
+}
+
+.log-message {
+  flex-shrink: 0;
+}
+
+.log-data {
+  color: #9cdcfe;
+  word-break: break-all;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Log level colors */
+.log-send .log-level { color: #569cd6; }
+.log-receive .log-level { color: #4ec9b0; }
+.log-info .log-level { color: #dcdcaa; }
+.log-error .log-level { color: #f14c4c; }
+.log-debug .log-level { color: #808080; }
 
 .log-empty {
-  color: var(--p-text-muted-color);
+  color: #808080;
   text-align: center;
   padding: 2rem;
 }
 
-.footer {
-  margin-top: 1.5rem;
-  text-align: center;
-}
+/* Source badge colors */
+.log-item[class*="plugin"] .log-source { background: #6a5acd; }
+.log-item[class*="bridge"] .log-source { background: #2e8b57; }
+.log-item[class*="app"] .log-source { background: #cd853f; }
+.log-item[class*="web"] .log-source { background: #4169e1; }
 </style>
