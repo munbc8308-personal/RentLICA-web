@@ -1,4 +1,4 @@
-import type { BridgeMessageType, BridgeResponse, DeviceInfo, LocationInfo } from '~/types/bridge'
+import type { BridgeMessageType, BridgeResponse, DeviceInfo, LocationInfo, CalendarEvent } from '~/types/bridge'
 import { bridgeLogger } from './useBridgeLogger'
 
 // 앱에서 주입하는 함수 타입 선언
@@ -34,6 +34,9 @@ interface UseBridgeReturn {
   haptic: (type?: 'light' | 'medium' | 'heavy') => Promise<void>
   share: (text: string, url?: string) => Promise<boolean>
   openExternal: (url: string) => Promise<boolean>
+  // 캘린더
+  requestCalendarPermission: () => Promise<boolean>
+  addCalendarEvent: (event: CalendarEvent) => Promise<string | null>
 }
 
 export function useBridge(): UseBridgeReturn {
@@ -163,6 +166,17 @@ export function useBridge(): UseBridgeReturn {
     return response.success
   }
 
+  // 캘린더 API
+  const requestCalendarPermission = async (): Promise<boolean> => {
+    const response = await sendMessage('calendar.requestPermission')
+    return response.success
+  }
+
+  const addCalendarEvent = async (event: CalendarEvent): Promise<string | null> => {
+    const response = await sendMessage<{ eventId: string }>('calendar.addEvent', event)
+    return response.success ? response.data?.eventId ?? null : null
+  }
+
   // 이벤트 리스너 설정
   onMounted(() => {
     isInApp.value = checkIsInApp()
@@ -224,5 +238,7 @@ export function useBridge(): UseBridgeReturn {
     haptic,
     share,
     openExternal,
+    requestCalendarPermission,
+    addCalendarEvent,
   }
 }

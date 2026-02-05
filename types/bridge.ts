@@ -31,6 +31,11 @@ export type BridgeMessageType =
   // 네비게이션
   | 'nav.back'
   | 'nav.exit'
+  // 캘린더
+  | 'calendar.requestPermission'
+  | 'calendar.addEvent'
+  | 'calendar.getEvents'
+  | 'calendar.deleteEvent'
 
 export interface BridgeResponse<T = unknown> {
   success: boolean
@@ -51,6 +56,15 @@ export interface LocationInfo {
   latitude: number
   longitude: number
   accuracy: number
+}
+
+export interface CalendarEvent {
+  id?: string
+  title: string
+  startDate: string // ISO 8601 format
+  endDate?: string // ISO 8601 format
+  notes?: string
+  allDay?: boolean
 }
 
 // Window 타입 확장

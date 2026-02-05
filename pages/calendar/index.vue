@@ -1,7 +1,11 @@
 <script setup lang="ts">
+const { isInApp, requestCalendarPermission, addCalendarEvent, haptic } = useBridge()
+
 useHead({
   title: '일정 알림 - RentLICA'
 })
+
+const addingEventId = ref<string | null>(null)
 
 interface ScheduleItem {
   id: string
@@ -166,6 +170,60 @@ onMounted(() => {
   const currentMonth = new Date().getMonth() + 1
   selectedMonth.value = currentMonth
 })
+
+// 캘린더에 일정 추가
+const addToCalendar = async (item: ScheduleItem) => {
+  if (addingEventId.value) return
+  addingEventId.value = item.id
+
+  try {
+    // 권한 요청
+    const hasPermission = await requestCalendarPermission()
+    if (!hasPermission) {
+      alert('캘린더 접근 권한이 필요합니다.')
+      return
+    }
+
+    // 날짜 파싱 (예: "5월 31일" → 올해 5월 31일)
+    const currentYear = new Date().getFullYear()
+    let startDate: Date
+
+    if (item.month > 0 && item.deadline.includes('일')) {
+      // "X월 Y일" 형식
+      const dayMatch = item.deadline.match(/(\d+)일/)
+      const day = dayMatch ? parseInt(dayMatch[1]) : 1
+      startDate = new Date(currentYear, item.month - 1, day)
+
+      // 이미 지난 날짜면 내년으로
+      if (startDate < new Date()) {
+        startDate = new Date(currentYear + 1, item.month - 1, day)
+      }
+    } else {
+      // 상시 또는 특정 기한이 아닌 경우 현재 날짜 기준
+      startDate = new Date()
+    }
+
+    const eventData = {
+      title: item.title,
+      startDate: startDate.toISOString(),
+      notes: item.description,
+      allDay: true
+    }
+
+    const eventId = await addCalendarEvent(eventData)
+    if (eventId) {
+      await haptic('medium')
+      alert('캘린더에 일정이 추가되었습니다.')
+    } else {
+      alert('일정 추가에 실패했습니다.')
+    }
+  } catch (error) {
+    console.error('캘린더 추가 오류:', error)
+    alert('일정 추가 중 오류가 발생했습니다.')
+  } finally {
+    addingEventId.value = null
+  }
+}
 </script>
 
 <template>
@@ -203,6 +261,17 @@ onMounted(() => {
               </div>
               <h3 class="schedule-title">{{ item.title }}</h3>
               <p class="schedule-description">{{ item.description }}</p>
+              <!-- 세금 신고 항목에 캘린더 추가 버튼 -->
+              <Button
+                v-if="item.category === 'tax' && isInApp && item.month > 0"
+                label="캘린더에 추가"
+                icon="pi pi-calendar-plus"
+                size="small"
+                text
+                class="add-calendar-btn"
+                :loading="addingEventId === item.id"
+                @click="addToCalendar(item)"
+              />
             </div>
             <div class="schedule-deadline">
               <i class="pi pi-clock" />
@@ -355,6 +424,10 @@ onMounted(() => {
   font-size: 0.875rem;
   color: var(--p-text-muted-color);
   margin: 0;
+}
+
+.add-calendar-btn {
+  margin-top: 0.5rem;
 }
 
 .schedule-deadline {
